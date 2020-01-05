@@ -58,7 +58,11 @@ class MPQueue(mpq.Queue):
 
     def drain(self):
         item = self.safe_get()
-        while item:
+        # note that 'while item' will cause problem if we have np.ndarray left
+        # in the queue, for which the truth value cannot be defined.
+        # But safe_get() returns None if queue is empty.
+        # So the more explicit form below is preferred
+        while item is not None:
             yield item
             item = self.safe_get()
 
