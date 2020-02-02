@@ -8,6 +8,7 @@ import multiprocessing as mp
 import multiprocessing.queues as mpq
 import signal
 import sys
+import os
 import time
 from queue import Empty, Full
 import numpy as np
@@ -114,7 +115,8 @@ def default_signal_handler(signal_object, exception_class, signal_num, current_s
 def init_signal(signal_num, signal_object, exception_class, handler):
     handler = functools.partial(handler, signal_object, exception_class)
     signal.signal(signal_num, handler)
-#    signal.siginterrupt(signal_num, False)
+    if not os.name == 'nt':
+        signal.siginterrupt(signal_num, False)
 
 
 def init_signals(shutdown_event, int_handler, term_handler):
@@ -150,12 +152,10 @@ class ProcWorker:
         return signal_object
 
     def main_loop(self):
-        # give some time for various other processes to start
-        time.sleep(1)
         self.log(logging.DEBUG, "{} Entering main_loop".format(self.name))
         while not self.shutdown_event.is_set():
             self.main_func()
-        self.log(logging.DEBUG, "Recieved shutdown event")
+        self.log(logging.DEBUG, "{} Recieved shutdown event".format(self.name))
 
     def startup(self):
         self.log(logging.DEBUG, "{} Entering startup".format(self.name))
@@ -192,7 +192,7 @@ class ProcWorker:
 
 
 class TimerProcWorker(ProcWorker):
-    INTERVAL_SECS = 1  # 10
+    INTERVAL_SECS = 10
     MAX_SLEEP_SECS = 0.02
 
     def main_loop(self):
@@ -217,10 +217,14 @@ class QueueProcWorker(ProcWorker):
         self.log(logging.DEBUG, "Entering QueueProcWorker.main_loop")
         while not self.shutdown_event.is_set():
             item = self.work_q.safe_get()
-            if not item:
+            if item is None:
                 continue
             if not isinstance(item[1], np.ndarray):
                 self.log(logging.DEBUG, "QueueProcWorker.main_loop received '{}' message".format(item))
+#            if isinstance(item[1], np.ndarray):
+#                self.log(logging.DEBUG,
+#                         "QueueProcWorker.main_loop received an array of shape {} and type {}".
+#                         format(item[1].shape, item[1].dtype))
             if item == "END":
                 break
             else:
@@ -235,8 +239,8 @@ def proc_worker_wrapper(proc_worker_class, name, startup_evt, shutdown_evt, even
 
 
 class Proc:
-    STARTUP_WAIT_SECS = 7.0
-    SHUTDOWN_WAIT_SECS = 7.0
+    STARTUP_WAIT_SECS = 3.0
+    SHUTDOWN_WAIT_SECS = 3.0
 
     def __init__(self, name, worker_class, shutdown_event, event_q, *args):
         self.log = functools.partial(_logger, '{}'.format(name))
